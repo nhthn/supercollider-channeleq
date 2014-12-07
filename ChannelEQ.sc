@@ -2,6 +2,7 @@
 // wslib 2009, revised Nathan Ho 2014
 
 ChannelEQ {
+	classvar <>prefsFile;
 	var <window;
 
 	var <target, <numChannels, <server;
@@ -13,7 +14,11 @@ ChannelEQ {
 	var selected;
 	var tvw, tvwViews;
 	var puMenu, puButtons, puFileButtons;
-	
+
+	*initClass {
+		prefsFile = Platform.userConfigDir +/+ "eq-prefs.dat";
+	}
+
 	*new { |target|
 		if (\TabbedView.asClass.notNil) {
 			^super.new.init(target);
@@ -248,17 +253,15 @@ ChannelEQ {
 		];
 		
 		puFileButtons[0].action_({
-			File.use("eq-prefs.txt", "w",
-				{ |f| f.write(
-					( current: frdb,
-					   presets: frpresets).asCompileString
-					); });
+			File.use(prefsFile, "w", { |f| 
+				f.write((current: frdb, presets: frpresets).asCompileString);
+			});
 		});
 		
 		puFileButtons[1].action_({
 			var contents;
-			if (File.exists("eq-prefs.txt")) {
-				File.use("eq-prefs.txt", "r", { |f| 
+			if (File.exists(prefsFile)) {
+				File.use(prefsFile, "r", { |f| 
 					contents = f.readAllString.interpret;
 					//contents.postln;
 					frdb = contents[\current];
