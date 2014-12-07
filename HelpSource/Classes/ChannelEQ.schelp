@@ -22,9 +22,8 @@ ChannelEQ(target: m);
 classmethods::
 
 method:: prefsFile
-method:: prefsFile_
 
-Sets the location of the preferences file. code:: Platform.userConfigDir +/+ "eq-prefs.dat" :: by default.
+Location of the preferences file. code:: Platform.userConfigDir +/+ "eq-prefs.dat" :: by default.
 
 method:: new
 
