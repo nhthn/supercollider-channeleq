@@ -5,7 +5,7 @@ ChannelEQ {
 	classvar <>prefsFile;
 	var <window;
 
-	var <target, <numChannels, <server;
+	var <target, <numChannels, <server, <bus;
 	var <synth, synthdef;
 
 	var uvw, font;
@@ -19,15 +19,22 @@ ChannelEQ {
 		prefsFile = Platform.userConfigDir +/+ "eq-prefs.dat";
 	}
 
-	*new { |target|
+	*new { |numChannels, server, bus, target|
 		if (\TabbedView.asClass.notNil) {
-			^super.new.init(target);
-		} { "LEQ requires the TabbedView Quark".error };
+			^super.new.init(numChannels, server, bus, target);
+		} { "ChannelEQ requires the TabbedView Quark".error };
 	}
 
 	play {
+		"play".postln;
 		server.waitForBoot {
-			synth = target.playfx(\param_beq, [\eq_controls, this.toControl]);
+			if (target.notNil) {
+				// using MixerChannel
+				synth = target.playfx(\param_beq, [\eq_controls, this.toControl]);
+			} {
+				// using raw Bus
+				synth = Synth.tail(server, \param_beq, [\out, bus, \eq_controls, this.toControl]);
+			};
 			NodeWatcher.register(synth);
 		};
 	}
@@ -63,7 +70,9 @@ ChannelEQ {
 	}
 
 	sendCurrent {
-		synth.setn(\eq_controls, this.toControl);
+		if (synth.notNil) {
+			synth.setn(\eq_controls, this.toControl);
+		}
 	}
 
 	tvwRefresh { 
@@ -110,15 +119,41 @@ ChannelEQ {
 		if (synth.isPlaying) { { this.play; }.defer(0.05); };
 	}
 
-	init { |argTarget|
-		
-		target = argTarget;
-		server = target.server;
+	init { |argNumChannels, argServer, argBus, argTarget|
+		// Hack to avoid sclang from yelling at us for using the class name itself
+		var mixerChannel = \MixerChannel.asClass;
 
-		numChannels = target.inChannels;
+		if (argTarget.notNil
+			and: mixerChannel.notNil
+			and: { argTarget.isKindOf(mixerChannel) }) {
+			// MixerChannel in use
+			target = argTarget;
+			server = target.server;
+			numChannels = target.inChannels;
+		} {
+			if (argBus.isNil) {
+				// If no bus is provided, default to zero
+				bus = 0;
+				// Server
+				server = argServer ? Server.default;
+				// Number of channels set to 2
+				numChannels = argNumChannels ? 2;
+			} {
+				// If a bus is provided, use it
+				bus = argBus.asBus;
+				// and its server
+				server = argServer ? bus.server;
+				// and its number of channels (unless overridden)
+				numChannels = argNumChannels ? if (argBus.isNumber) { 2 } { bus.numChannels };
+			};
+		};
 
 		window = Window.new(
-			"LEQ on %".format(target.name),
+			if (target.isNil) {
+				"ChannelEQ on bus % (% channels)".format(bus, numChannels)
+			} {
+				"ChannelEQ on '%' (% channels)".format(target.name, numChannels)
+			},
 			Rect(299, 130, 305, 220), true
 		).front; 
 				
