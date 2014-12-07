@@ -1,4 +1,0 @@
-supercollider-channeleq
-=======================
-
-MasterEQ + MixerChannel
