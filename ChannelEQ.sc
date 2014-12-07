@@ -189,6 +189,319 @@ ChannelEQGUI {
 		puMenu.items = items;
 	}
 
+	save {
+		File.use(prefsFile, "w", { |f| 
+			f.write((current: channelEQ.frdb, presets: frpresets).asCompileString);
+		});
+	}
+
+	revert {
+		var contents;
+		if (File.exists(prefsFile)) {
+			File.use(prefsFile, "r", { |f| 
+				contents = f.readAllString.interpret;
+				//contents.postln;
+				channelEQ.frdb = contents[\current];
+				frpresets = contents[\presets];
+				channelEQ.sendCurrent;
+				this.puMenuCreateItems;
+				this.puMenuCheck;
+				uvw.refresh;
+				this.tvwRefresh;
+			});
+		};
+	}
+
+	onSelect {
+		channelEQ.frdb = frpresets[(puMenu.value * 2) + 1].deepCopy;
+		//frdb.postln;
+		channelEQ.sendCurrent;
+		uvw.refresh;
+		this.tvwRefresh;
+		if (frpresets[puMenu.value * 2].asString[..1] == "x_") {
+			puButtons[0].enabled_(false); 
+			puButtons[1].enabled_(false);
+		} {
+			puButtons[0].enabled_(false);
+			puButtons[1].enabled_(true);
+		};
+	}
+
+	addPreset {
+			var testPreset, addPreset, replacePreset;
+			
+			testPreset = { |name = "user"|
+				var index, xnames, clpresets;
+				name = name.asSymbol;
+				index = frpresets.clump(2)
+					.detectIndex({ |item| item[0] == name.asSymbol });
+				xnames = frpresets.clump(2)
+					.select({ |item| item[0].asString[..1] == "x_" })
+					.collect({ |item| item[0].asString[2..].asSymbol });
+				if (index.isNil) {
+					if (xnames.includes(name).not) {
+						addPreset.value(name);
+					} { 
+						SCAlert("EQ preset '%' cannot be overwritten.\nPlease choose a different name"
+								.format(name), ["ok"]);
+					};
+				} {
+					SCAlert("EQ preset '%' already exists.\nDo you want to overwrite it?"
+							.format(name), ["cancel","ok"], 
+							[{}, { replacePreset.value(name, index) }]); 
+				};
+			};
+				
+			addPreset = { |name = "user"|
+				frpresets = frpresets ++ [name.asSymbol, channelEQ.frdb.deepCopy];
+				this.puMenuCreateItems;
+				this.puMenuCheck;
+			};
+				
+			replacePreset = { |name = "x_default", index = 0|
+				frpresets[index * 2] = name.asSymbol;
+				frpresets[(index * 2)+1] = channelEQ.frdb.deepCopy;
+				this.puMenuCreateItems;
+				this.puMenuCheck;
+			};
+			
+			SCRequestString( "user", "Enter a short name for the new preset",
+				{ |str| testPreset.value(str); });
+	}
+
+	deletePreset {
+		 SCAlert("Are you sure you want to\ndelete preset '%'"
+					.format(puMenu.items[puMenu.value]), ["cancel","ok"], 
+					[{}, {
+					frpresets.removeAt( puMenu.value * 2);
+					frpresets.removeAt( puMenu.value * 2);
+					this.puMenuCreateItems;
+					this.puMenuCheck;
+				}]); 
+	}
+
+	mouseDownAction { |vw, x, y, mod|
+		var bounds;
+		var pt;
+		var min = 20, max = 22050, range = 24;
+		
+		bounds = vw.bounds.moveTo(0, 0);
+		//pt = (x@y) - (bounds.leftTop);
+		pt = (x@y);
+		
+		selected =  channelEQ.frdb.detectIndex({ |array|
+			((array[0].explin(min, max, 0, bounds.width))@(array[1].linlin(range.neg, range, bounds.height, 0, \none)))
+				.dist(pt) <= 5;
+		}) ? -1;
+			
+		if (selected != -1) { tvw.focus(selected) };
+		vw.refresh;
+	}
+
+	mouseMoveAction { |vw, x, y, mod|
+		var bounds;
+		var pt;
+		var min = 20, max = 22050, range = 24;
+		var frdb = channelEQ.frdb;
+		
+		bounds = vw.bounds.moveTo(0,0);
+		//pt = (x@y) - (bounds.leftTop);
+		pt = (x@y);
+		
+		if (selected != -1) {
+			case { ModKey(mod).alt }
+				{ 
+				if ( ModKey(mod).shift)
+					{
+				frdb[selected] = frdb[selected][[0,1]] 
+					++ [y.linexp(bounds.height, 0, 0.1, 10, \none).nearestInList(
+						if ([0,4].includes(selected)) 
+							{[0.6,1,2.5,5,10]} 
+							{[0.1,0.25,0.5,1,2.5,5,10]}
+							
+						)];
+					}
+					{
+				frdb[selected] = frdb[selected][[0,1]] 
+					++ [y.linexp(bounds.height, 0, 0.1, 10, \none).clip(
+							 if ([0,4].includes(selected)) { 0.6 } {0.1},
+							 	10).round(0.01)];
+					};
+				tvwViews[selected][2].value = frdb[selected][2];
+					 }
+				{ ModKey(mod).shift }
+				{
+			frdb[selected] = [
+				pt.x.linexp(0, bounds.width, min, max)
+					.nearestInList([25,50,75,100,250,500,750,1000,2500,5000,7500,10000]),
+				pt.y.linlin(0, bounds.height, range, range.neg, \none)
+					.clip2(range).round(6),
+				frdb[selected][2] 
+				];
+			tvwViews[selected][0].value = frdb[selected][0];
+			tvwViews[selected][1].value = frdb[selected][1];	
+				}
+				{ true }
+				{
+			frdb[selected] = [
+				pt.x.linexp(0, bounds.width, min, max).clip(20,20000).round(1),
+				pt.y.linlin(0, bounds.height, range, range.neg, \none).clip2(range)
+					.round(0.25),
+				frdb[selected][2] 
+				];	
+			tvwViews[selected][0].value = frdb[selected][0];
+			tvwViews[selected][1].value = frdb[selected][1];
+				};
+			channelEQ.sendCurrent;
+			vw.refresh;
+			this.puMenuCheck;
+		};
+		
+	}
+		
+	drawFunc { |vw|
+		var freqs, svals, values, bounds, zeroline;
+		var freq = 1200, rq = 0.5, db = 12;
+		var min = 20, max = 22050, range = 24;
+		var vlines = [100,1000,10000];
+		var dimvlines = [25,50,75, 250,500,750, 2500,5000,7500];
+		var hlines = [-18,-12,-6,6,12,18];
+		var pt, strOffset = 11;
+		var frdb = channelEQ.frdb;
+		
+		if (GUI.id === 'swing') { strOffset = 14 };
+		
+		bounds = vw.bounds.moveTo(0,0);
+		
+		#freq,db,rq = frdb[0] ? [freq, db, rq];
+		
+		freqs = ({|i| i } ! (bounds.width+1));
+		freqs = freqs.linexp(0, bounds.width, min, max);
+		
+		values = [
+			BLowShelf.magResponse(freqs, 44100, frdb[0][0], frdb[0][2], 
+				frdb[0][1]),
+			BPeakEQ.magResponse(freqs, 44100, frdb[1][0], frdb[1][2], 
+				frdb[1][1]),
+			BPeakEQ.magResponse(freqs, 44100, frdb[2][0], frdb[2][2], 
+				frdb[2][1]),
+			BPeakEQ.magResponse(freqs, 44100, frdb[3][0], frdb[3][2], 
+				frdb[3][1]),
+			BHiShelf.magResponse(freqs, 44100, frdb[4][0], frdb[4][2], 
+				frdb[4][1])
+		].ampdb.max(-200).min(200);
+		
+		zeroline = 0.linlin(range.neg,range, bounds.height, 0, \none);
+		
+		svals = values.sum.linlin(range.neg,range, bounds.height, 0, \none);
+		values = values.linlin(range.neg,range, bounds.height, 0, \none);
+		
+		vlines = vlines.explin(min, max, 0, bounds.width);
+		dimvlines = dimvlines.explin(min, max, 0, bounds.width);
+		
+		pt = frdb.collect { |array|
+			(array[0].explin(min, max, 0, bounds.width))
+			@
+			(array[1].linlin(range.neg,range,bounds.height,0,\none));
+		};
+
+		Pen.color_(Color.white.alpha_(0.25));
+		Pen.roundedRect(bounds, [6,6,0,0]).fill;
+		
+		Pen.color = Color.gray(0.2).alpha_(0.5);
+		//Pen.strokeRect(bounds.insetBy(-1,-1));
+		
+		//Pen.addRect(bounds).clip;
+		Pen.roundedRect(bounds.insetBy(0,0), [6,6,0,0]).clip;
+		
+		Pen.color = Color.gray(0.2).alpha_(0.125);
+		
+		hlines.do({ |hline,i|
+			hline = hline.linlin(range.neg,range, bounds.height, 0, \none);
+			Pen.line(0@hline, bounds.width@hline)
+			});
+		dimvlines.do({ |vline,i|
+			Pen.line(vline@0, vline@bounds.height);
+			});
+		Pen.stroke;
+	
+		Pen.color = Color.gray(0.2).alpha_(0.5);
+		vlines.do({ |vline,i|
+			Pen.line(vline@0, vline@bounds.height);
+			});
+		Pen.line(0@zeroline, bounds.width@zeroline).stroke;
+		
+		/*
+		Pen.color = Color.white.alpha_(0.5);
+		Pen.fillRect(Rect(33, 0, 206, 14));
+		*/
+		
+		Pen.font = font;
+		
+		Pen.color = Color.gray(0.2).alpha_(0.5);
+		hlines.do({ |hline|
+			Pen.stringAtPoint(hline.asString ++ "dB", 
+				3@(hline.linlin(range.neg,range, bounds.height, 0, \none) 
+					- strOffset));
+			});
+		vlines.do({ |vline,i|
+			Pen.stringAtPoint(["100Hz", "1KHz", "10KHz"][i], 
+				(vline+2)@(bounds.height - (strOffset + 1)));
+			});
+		
+		//Pen.roundedRect(bounds.insetBy(0.5,0.5), [5,5,0,0]).stroke;
+		
+		/*
+		if (selected != -1)
+			{ Pen.stringAtPoint(
+				["low shelf: %hz, %dB, rs=%",
+				  "peak 1: %hz, %dB, rq=%",
+				  "peak 2: %hz, %dB, rq=%",
+				  "peak 3: %hz, %dB, rq=%",
+				  "hi shelf: %hz, %dB, rs=%"
+				][selected].format(
+					frdb[selected][0],
+					frdb[selected][1],
+					frdb[selected][2]
+					),
+				35@1);
+			 }
+			 { Pen.stringAtPoint("shift: snap, alt: rq", 35@1); };
+		*/
+				
+		values.do({ |svals,i|
+			var color;
+			color = Color.hsv(
+				i.linlin(0,values.size,0,1), 
+				0.75, 0.5).alpha_(if (selected == i) { 0.75 } { 0.25 });
+			Pen.color = color;
+			Pen.moveTo(0@(svals[0]));
+			svals[1..].do({ |val, i|
+				Pen.lineTo((i+1)@val);
+				});
+			Pen.lineTo(bounds.width@(bounds.height/2));
+			Pen.lineTo(0@(bounds.height/2));
+			Pen.lineTo(0@(svals[0]));
+			Pen.fill;
+			
+			Pen.addArc(pt[i], 5, 0, 2pi);
+			
+			Pen.color = color.alpha_(0.75);
+			Pen.stroke;
+
+			});
+		
+		Pen.color = Color.blue(0.5);
+		Pen.moveTo(0@(svals[0]));
+		svals[1..].do({ |val, i|
+			Pen.lineTo((i + 1)@val);
+			});
+		Pen.stroke;
+		
+		Pen.extrudedRect(bounds, [6,6,0,0], 1, inverse: true);
+
+	}
+
 	init { |argChannelEQ|
 		channelEQ = argChannelEQ;
 
@@ -221,7 +534,7 @@ ChannelEQGUI {
 				[2800.0, 3.5, 1.54], [7400.0, 7.0, 1.0]], 
 			'x_telephone', [[600.0, -22.0, 0.7], [250, 0, 1], [1200.0, -2.0, 0.5],
 				[1800.0, 1.0, 0.5], [4000.0, -22.0, 0.7]]
-			];
+		];
 			
 		//frdb = frpresets[1].deepCopy;
 		
@@ -241,7 +554,7 @@ ChannelEQGUI {
 		
 		window.view.decorator.shift(0,8);
 		
-		tvw.views.do({ |view,i| 
+		tvw.views.do({ |view, i| 
 			var vw_array = [];
 			
 			view.decorator = FlowLayout(view.bounds.moveTo(0,0)); 
@@ -283,7 +596,7 @@ ChannelEQGUI {
 			
 			tvwViews = tvwViews.add(vw_array);
 			
-			});
+		});
 			
 		bypassButton = RoundButton.new(window, 17@17)
 				.extrude_(true).border_(1) //.font_(font)
@@ -329,324 +642,28 @@ ChannelEQGUI {
 				.resize_(7)
 		];
 		
-		puFileButtons[0].action_({
-			File.use(prefsFile, "w", { |f| 
-				f.write((current: channelEQ.frdb, presets: frpresets).asCompileString);
-			});
-		});
+		puFileButtons[0].action_ { this.save; };
 		
-		puFileButtons[1].action_({
-			var contents;
-			if (File.exists(prefsFile)) {
-				File.use(prefsFile, "r", { |f| 
-					contents = f.readAllString.interpret;
-					//contents.postln;
-					channelEQ.frdb = contents[\current];
-					frpresets = contents[\presets];
-					channelEQ.sendCurrent;
-					this.puMenuCreateItems;
-					this.puMenuCheck;
-					uvw.refresh;
-					this.tvwRefresh;
-				});
-			};
-		});
+		puFileButtons[1].action_ { this.revert; };
 
 		this.puMenuCreateItems;
 	
-		puMenu.action = { |pu|
-			channelEQ.frdb = frpresets[(pu.value * 2) + 1].deepCopy;
-			//frdb.postln;
-			channelEQ.sendCurrent;
-			uvw.refresh;
-			this.tvwRefresh;
-			if (frpresets[pu.value * 2].asString[..1] == "x_") {
-				puButtons[0].enabled_(false); 
-				puButtons[1].enabled_(false);
-			} {
-				puButtons[0].enabled_(false);
-				puButtons[1].enabled_(true);
-			};
-		};
+		puMenu.action_ { this.onSelect; };
 			
-		puButtons[0].action = { |bt|
-			var testPreset, addPreset, replacePreset;
-			
-			testPreset = { |name = "user"|
-				var index, xnames, clpresets;
-				name = name.asSymbol;
-				index = frpresets.clump(2)
-					.detectIndex({ |item| item[0] == name.asSymbol });
-				xnames = frpresets.clump(2)
-					.select({ |item| item[0].asString[..1] == "x_" })
-					.collect({ |item| item[0].asString[2..].asSymbol });
-				if (index.isNil) {
-					if (xnames.includes(name).not) {
-						addPreset.value(name);
-					} { 
-						SCAlert("EQ preset '%' cannot be overwritten.\nPlease choose a different name"
-								.format(name), ["ok"]);
-					};
-				} {
-					SCAlert("EQ preset '%' already exists.\nDo you want to overwrite it?"
-							.format(name), ["cancel","ok"], 
-							[{}, { replacePreset.value(name, index) }]); 
-				};
-			};
-				
-			addPreset = { |name = "user"|
-				frpresets = frpresets ++ [name.asSymbol, channelEQ.frdb.deepCopy];
-				this.puMenuCreateItems;
-				this.puMenuCheck;
-			};
-				
-			replacePreset = { |name = "x_default", index = 0|
-				frpresets[index * 2] = name.asSymbol;
-				frpresets[(index * 2)+1] = channelEQ.frdb.deepCopy;
-				this.puMenuCreateItems;
-				this.puMenuCheck;
-			};
-			
-			SCRequestString( "user", "Enter a short name for the new preset",
-				{ |str| testPreset.value(str); });
-		};
+		puButtons[0].action = { this.addPreset; };
 		
-		puButtons[1].action = { |bt|
-			 SCAlert("Are you sure you want to\ndelete preset '%'"
-						.format(puMenu.items[puMenu.value]), ["cancel","ok"], 
-						[{}, {
-						frpresets.removeAt( puMenu.value * 2);
-						frpresets.removeAt( puMenu.value * 2);
-						this.puMenuCreateItems;
-						this.puMenuCheck;
-					}]); 
-		};
+		puButtons[1].action = { this.deletePreset; };
 		
 		this.puMenuCheck;
 		
-		uvw.mouseDownAction = { |vw, x, y, mod|
-			var bounds;
-			var pt;
-			var min = 20, max = 22050, range = 24;
+		uvw.mouseDownAction = { |vw, x, y, mod| this.mouseDownAction(vw, x, y, mod); };
 			
-			bounds = vw.bounds.moveTo(0, 0);
-			//pt = (x@y) - (bounds.leftTop);
-			pt = (x@y);
-			
-			selected =  channelEQ.frdb.detectIndex({ |array|
-				((array[0].explin(min, max, 0, bounds.width))@(array[1].linlin(range.neg, range, bounds.height, 0, \none)))
-					.dist(pt) <= 5;
-			}) ? -1;
-				
-			if (selected != -1) { tvw.focus(selected) };
-			vw.refresh;
-		};
-			
-		uvw.mouseMoveAction = { |vw, x, y, mod|
-			var bounds;
-			var pt;
-			var min = 20, max = 22050, range = 24;
-			var frdb = channelEQ.frdb;
-			
-			bounds = vw.bounds.moveTo(0,0);
-			//pt = (x@y) - (bounds.leftTop);
-			pt = (x@y);
-			
-			if (selected != -1)
-				{
-				case { ModKey(mod).alt }
-					{ 
-					if ( ModKey(mod).shift)
-						{
-					frdb[selected] = frdb[selected][[0,1]] 
-						++ [y.linexp(bounds.height, 0, 0.1, 10, \none).nearestInList(
-							if ([0,4].includes(selected)) 
-								{[0.6,1,2.5,5,10]} 
-								{[0.1,0.25,0.5,1,2.5,5,10]}
-								
-							)];
-						}
-						{
-					frdb[selected] = frdb[selected][[0,1]] 
-						++ [y.linexp(bounds.height, 0, 0.1, 10, \none).clip(
-								 if ([0,4].includes(selected)) { 0.6 } {0.1},
-								 	10).round(0.01)];
-						};
-					tvwViews[selected][2].value = frdb[selected][2];
-						 }
-					{ ModKey(mod).shift }
-					{
-				frdb[selected] = [
-					pt.x.linexp(0, bounds.width, min, max)
-						.nearestInList([25,50,75,100,250,500,750,1000,2500,5000,7500,10000]),
-					pt.y.linlin(0, bounds.height, range, range.neg, \none)
-						.clip2(range).round(6),
-					frdb[selected][2] 
-					];
-				tvwViews[selected][0].value = frdb[selected][0];
-				tvwViews[selected][1].value = frdb[selected][1];	
-					}
-					{ true }
-					{
-				frdb[selected] = [
-					pt.x.linexp(0, bounds.width, min, max).clip(20,20000).round(1),
-					pt.y.linlin(0, bounds.height, range, range.neg, \none).clip2(range)
-						.round(0.25),
-					frdb[selected][2] 
-					];	
-				tvwViews[selected][0].value = frdb[selected][0];
-				tvwViews[selected][1].value = frdb[selected][1];		};
-			channelEQ.sendCurrent;
-			vw.refresh;
-			this.puMenuCheck;
-				};
-		
-			};
-		
-		uvw.drawFunc = { |vw|
-			var freqs, svals, values, bounds, zeroline;
-			var freq = 1200, rq = 0.5, db = 12;
-			var min = 20, max = 22050, range = 24;
-			var vlines = [100,1000,10000];
-			var dimvlines = [25,50,75, 250,500,750, 2500,5000,7500];
-			var hlines = [-18,-12,-6,6,12,18];
-			var pt, strOffset = 11;
-			var frdb = channelEQ.frdb;
-			
-			if (GUI.id === 'swing') { strOffset = 14 };
-			
-			bounds = vw.bounds.moveTo(0,0);
-			
-			#freq,db,rq = frdb[0] ? [freq, db, rq];
-			
-			freqs = ({|i| i } ! (bounds.width+1));
-			freqs = freqs.linexp(0, bounds.width, min, max);
-			
-			values = [
-				BLowShelf.magResponse(freqs, 44100, frdb[0][0], frdb[0][2], 
-					frdb[0][1]),
-				BPeakEQ.magResponse(freqs, 44100, frdb[1][0], frdb[1][2], 
-					frdb[1][1]),
-				BPeakEQ.magResponse(freqs, 44100, frdb[2][0], frdb[2][2], 
-					frdb[2][1]),
-				BPeakEQ.magResponse(freqs, 44100, frdb[3][0], frdb[3][2], 
-					frdb[3][1]),
-				BHiShelf.magResponse(freqs, 44100, frdb[4][0], frdb[4][2], 
-					frdb[4][1])
-					].ampdb.max(-200).min(200);
-			
-			zeroline = 0.linlin(range.neg,range, bounds.height, 0, \none);
-			
-			svals = values.sum.linlin(range.neg,range, bounds.height, 0, \none);
-			values = values.linlin(range.neg,range, bounds.height, 0, \none);
-			
-			vlines = vlines.explin(min, max, 0, bounds.width);
-			dimvlines = dimvlines.explin(min, max, 0, bounds.width);
-			
-			pt = frdb.collect({ |array|
-				(array[0].explin(min, max, 0, bounds.width))
-				@
-				(array[1].linlin(range.neg,range,bounds.height,0,\none));
-				});
+		uvw.mouseMoveAction = { |vw, x, y, mod| this.mouseMoveAction(vw, x, y, mod); };
 
-				Pen.color_(Color.white.alpha_(0.25));
-				Pen.roundedRect(bounds, [6,6,0,0]).fill;
-				
-				Pen.color = Color.gray(0.2).alpha_(0.5);
-				//Pen.strokeRect(bounds.insetBy(-1,-1));
-				
-				//Pen.addRect(bounds).clip;
-				Pen.roundedRect(bounds.insetBy(0,0), [6,6,0,0]).clip;
-				
-				Pen.color = Color.gray(0.2).alpha_(0.125);
-				
-				hlines.do({ |hline,i|
-					hline = hline.linlin(range.neg,range, bounds.height, 0, \none);
-					Pen.line(0@hline, bounds.width@hline)
-					});
-				dimvlines.do({ |vline,i|
-					Pen.line(vline@0, vline@bounds.height);
-					});
-				Pen.stroke;
-			
-				Pen.color = Color.gray(0.2).alpha_(0.5);
-				vlines.do({ |vline,i|
-					Pen.line(vline@0, vline@bounds.height);
-					});
-				Pen.line(0@zeroline, bounds.width@zeroline).stroke;
-				
-				/*
-				Pen.color = Color.white.alpha_(0.5);
-				Pen.fillRect(Rect(33, 0, 206, 14));
-				*/
-				
-				Pen.font = font;
-				
-				Pen.color = Color.gray(0.2).alpha_(0.5);
-				hlines.do({ |hline|
-					Pen.stringAtPoint(hline.asString ++ "dB", 
-						3@(hline.linlin(range.neg,range, bounds.height, 0, \none) 
-							- strOffset));
-					});
-				vlines.do({ |vline,i|
-					Pen.stringAtPoint(["100Hz", "1KHz", "10KHz"][i], 
-						(vline+2)@(bounds.height - (strOffset + 1)));
-					});
-				
-				//Pen.roundedRect(bounds.insetBy(0.5,0.5), [5,5,0,0]).stroke;
-				
-				/*
-				if (selected != -1)
-					{ Pen.stringAtPoint(
-						["low shelf: %hz, %dB, rs=%",
-						  "peak 1: %hz, %dB, rq=%",
-						  "peak 2: %hz, %dB, rq=%",
-						  "peak 3: %hz, %dB, rq=%",
-						  "hi shelf: %hz, %dB, rs=%"
-						][selected].format(
-							frdb[selected][0],
-							frdb[selected][1],
-							frdb[selected][2]
-							),
-						35@1);
-					 }
-					 { Pen.stringAtPoint("shift: snap, alt: rq", 35@1); };
-				*/
-						
-				values.do({ |svals,i|
-					var color;
-					color = Color.hsv(
-						i.linlin(0,values.size,0,1), 
-						0.75, 0.5).alpha_(if (selected == i) { 0.75 } { 0.25 });
-					Pen.color = color;
-					Pen.moveTo(0@(svals[0]));
-					svals[1..].do({ |val, i|
-						Pen.lineTo((i+1)@val);
-						});
-					Pen.lineTo(bounds.width@(bounds.height/2));
-					Pen.lineTo(0@(bounds.height/2));
-					Pen.lineTo(0@(svals[0]));
-					Pen.fill;
-					
-					Pen.addArc(pt[i], 5, 0, 2pi);
-					
-					Pen.color = color.alpha_(0.75);
-					Pen.stroke;
-		
-					});
-				
-				Pen.color = Color.blue(0.5);
-				Pen.moveTo(0@(svals[0]));
-				svals[1..].do({ |val, i|
-					Pen.lineTo((i + 1)@val);
-					});
-				Pen.stroke;
-				
-				Pen.extrudedRect(bounds, [6,6,0,0], 1, inverse: true);
-
-		};
+		uvw.drawFunc = { |vw| this.drawFunc(vw); };
 
 		puFileButtons[1].action.value; // revert
+
 		window.refresh;
 		 
 		//uvw.refreshInRect(uvw.bounds.insetBy(-2,-2));
