@@ -7,10 +7,66 @@ ChannelEQ {
 	var <synth, synthdef;
 
 	var <>frdb;
-	var gui;
+	var <gui;
 
 	*new { |numChannels, server, bus, target|
-		^super.new.init(numChannels, server, bus, target);
+		var eq;
+		eq = super.new.route(numChannels, server, bus, target)
+			.init
+			.initGUI
+			.play;
+		eq.gui.stopOnClose = true;
+		^eq;
+	}
+
+	*newBare { |frdb|
+		^super.new.init(frdb);
+	}
+
+	route { |argNumChannels, argServer, argBus, argTarget|
+		// Hack to avoid sclang from yelling at us for using the class name itself
+		var mixerChannel = \MixerChannel.asClass;
+
+		if (argTarget.notNil
+			and: mixerChannel.notNil
+			and: { argTarget.isKindOf(mixerChannel) }) {
+			// MixerChannel in use
+			target = argTarget;
+			server = target.server;
+			numChannels = target.inChannels;
+		} {
+			if (argBus.isNil) {
+				// If no bus is provided, default to zero
+				bus = 0;
+				// Server
+				server = argServer ? Server.default;
+				// Number of channels set to 2
+				numChannels = argNumChannels ? 2;
+			} {
+				// If a bus is provided, use it
+				bus = argBus.asBus;
+				// and its server
+				server = argServer ? bus.server;
+				// and its number of channels (unless overridden)
+				numChannels = argNumChannels ? if (argBus.isNumber) { 2 } { bus.numChannels };
+			};
+		};
+	}
+
+	init { |argFrdb|
+		frdb = argFrdb ? [[100,0,1], [250,0,1], [1000,0,1], [3500,0,1], [6000,0,1]];
+			
+		synthdef = SynthDef("param_beq", { |out = 0, gate = 1, fadeTime = 0.05, doneAction = 2|
+			var frdb, input, env;
+			env = EnvGen.kr(Env.asr(fadeTime, 1, fadeTime), gate, doneAction: doneAction);
+			input = In.ar(out, numChannels);
+			input = this.ar(input);
+			XOut.ar(out, env, input);
+		}).store;
+	}
+
+	initGUI {
+		gui = ChannelEQGUI(this);
 	}
 
 	play {
@@ -26,8 +82,10 @@ ChannelEQ {
 		};
 	}
 			
-	free {
-		synth.set(\gate, 0);
+	stop {
+		if (synth.notNil and: { synth.isPlaying }) {
+			synth.set(\gate, 0);
+		}
 	}
 
 	ar { |input|
@@ -57,60 +115,13 @@ ChannelEQ {
 	}
 
 	sendCurrent {
-		if (synth.notNil) {
+		if (synth.notNil and: { synth.isPlaying }) {
 			synth.setn(\eq_controls, this.toControl);
 		}
 	}
 	
 	doOnServerTree {
 		if (synth.isPlaying) { { this.play; }.defer(0.05); };
-	}
-
-	init { |... args|
-		this.initNoGui(*args);
-		gui = ChannelEQGUI(this);
-	}
-
-	initNoGui { |argNumChannels, argServer, argBus, argTarget|
-		// Hack to avoid sclang from yelling at us for using the class name itself
-		var mixerChannel = \MixerChannel.asClass;
-
-		if (argTarget.notNil
-			and: mixerChannel.notNil
-			and: { argTarget.isKindOf(mixerChannel) }) {
-			// MixerChannel in use
-			target = argTarget;
-			server = target.server;
-			numChannels = target.inChannels;
-		} {
-			if (argBus.isNil) {
-				// If no bus is provided, default to zero
-				bus = 0;
-				// Server
-				server = argServer ? Server.default;
-				// Number of channels set to 2
-				numChannels = argNumChannels ? 2;
-			} {
-				// If a bus is provided, use it
-				bus = argBus.asBus;
-				// and its server
-				server = argServer ? bus.server;
-				// and its number of channels (unless overridden)
-				numChannels = argNumChannels ? if (argBus.isNumber) { 2 } { bus.numChannels };
-			};
-		};
-		
-		frdb = [[100,0,1], [250,0,1], [1000,0,1], [3500,0,1], [6000,0,1]];
-			
-		synthdef = SynthDef("param_beq", { |out = 0, gate = 1, fadeTime = 0.05, doneAction = 2|
-			var frdb, input, env;
-			env = EnvGen.kr(Env.asr(fadeTime, 1, fadeTime), gate, doneAction: doneAction);
-			input = In.ar(out, numChannels);
-			input = this.ar(input);
-			XOut.ar(out, env, input);
-		}).store;
-		
-		this.play;
 	}
 
 }
@@ -126,6 +137,7 @@ ChannelEQGUI {
 	var selected;
 	var tvw, tvwViews;
 	var puMenu, puButtons, puFileButtons;
+	var <>stopOnClose = false;
 
 	*initClass {
 		prefsFile = Platform.userConfigDir +/+ "eq-prefs.dat";
@@ -281,7 +293,7 @@ ChannelEQGUI {
 				.value_(1)
 				.action_({ |bt| switch(bt.value,
 					1, { channelEQ.play },
-					0, { channelEQ.free });
+					0, { channelEQ.stop });
 					})
 				.resize_(7);
 			
@@ -639,7 +651,9 @@ ChannelEQGUI {
 		 
 		//uvw.refreshInRect(uvw.bounds.insetBy(-2,-2));
 			
-		window.onClose_ { if (channelEQ.synth.isPlaying != false) { channelEQ.free; }; };
+		window.onClose_ {
+			if (stopOnClose) { channelEQ.stop; };
+		};
 		
 	}
 
