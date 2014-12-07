@@ -2,31 +2,18 @@
 // wslib 2009, revised Nathan Ho 2014
 
 ChannelEQ {
-	classvar <>prefsFile;
-	var <window;
 
 	var <target, <numChannels, <server, <bus;
 	var <synth, synthdef;
 
-	var uvw, font;
-	var frdb, frpresets;
-	var bypassButton;
-	var selected;
-	var tvw, tvwViews;
-	var puMenu, puButtons, puFileButtons;
-
-	*initClass {
-		prefsFile = Platform.userConfigDir +/+ "eq-prefs.dat";
-	}
+	var <>frdb;
+	var gui;
 
 	*new { |numChannels, server, bus, target|
-		if (\TabbedView.asClass.notNil) {
-			^super.new.init(numChannels, server, bus, target);
-		} { "ChannelEQ requires the TabbedView Quark".error };
+		^super.new.init(numChannels, server, bus, target);
 	}
 
 	play {
-		"play".postln;
 		server.waitForBoot {
 			if (target.notNil) {
 				// using MixerChannel
@@ -74,9 +61,84 @@ ChannelEQ {
 			synth.setn(\eq_controls, this.toControl);
 		}
 	}
+	
+	doOnServerTree {
+		if (synth.isPlaying) { { this.play; }.defer(0.05); };
+	}
+
+	init { |... args|
+		this.initNoGui(*args);
+		gui = ChannelEQGUI(this);
+	}
+
+	initNoGui { |argNumChannels, argServer, argBus, argTarget|
+		// Hack to avoid sclang from yelling at us for using the class name itself
+		var mixerChannel = \MixerChannel.asClass;
+
+		if (argTarget.notNil
+			and: mixerChannel.notNil
+			and: { argTarget.isKindOf(mixerChannel) }) {
+			// MixerChannel in use
+			target = argTarget;
+			server = target.server;
+			numChannels = target.inChannels;
+		} {
+			if (argBus.isNil) {
+				// If no bus is provided, default to zero
+				bus = 0;
+				// Server
+				server = argServer ? Server.default;
+				// Number of channels set to 2
+				numChannels = argNumChannels ? 2;
+			} {
+				// If a bus is provided, use it
+				bus = argBus.asBus;
+				// and its server
+				server = argServer ? bus.server;
+				// and its number of channels (unless overridden)
+				numChannels = argNumChannels ? if (argBus.isNumber) { 2 } { bus.numChannels };
+			};
+		};
+		
+		frdb = [[100,0,1], [250,0,1], [1000,0,1], [3500,0,1], [6000,0,1]];
+			
+		synthdef = SynthDef("param_beq", { |out = 0, gate = 1, fadeTime = 0.05, doneAction = 2|
+			var frdb, input, env;
+			env = EnvGen.kr(Env.asr(fadeTime, 1, fadeTime), gate, doneAction: doneAction);
+			input = In.ar(out, numChannels);
+			input = this.ar(input);
+			XOut.ar(out, env, input);
+		}).store;
+		
+		this.play;
+	}
+
+}
+
+ChannelEQGUI {
+	classvar <>prefsFile;
+	var channelEQ;
+	var <window;
+
+	var uvw, font;
+	var frpresets;
+	var bypassButton;
+	var selected;
+	var tvw, tvwViews;
+	var puMenu, puButtons, puFileButtons;
+
+	*initClass {
+		prefsFile = Platform.userConfigDir +/+ "eq-prefs.dat";
+	}
+
+	*new { |channelEQ|
+		if (\TabbedView.asClass.notNil) {
+			^super.new.init(channelEQ);
+		} { "ChannelEQGUI requires the TabbedView Quark".error };
+	}
 
 	tvwRefresh { 
-		frdb.do({ |item, i| 
+		channelEQ.frdb.do({ |item, i| 
 			item.do({ |subitem, ii| 
 				tvwViews[i][ii].value = subitem;
 			});
@@ -85,7 +147,7 @@ ChannelEQ {
 
 	puMenuCheck	{
 		var index;
-		index = frpresets.clump(2).detectIndex({ |item| item[1] == frdb });
+		index = frpresets.clump(2).detectIndex({ |item| item[1] == channelEQ.frdb });
 		if (index.notNil) {
 			puMenu.value = index;
 			puButtons[0].enabled_(false);
@@ -114,47 +176,17 @@ ChannelEQ {
 		items = items ++ ["-", "(custom)"];
 		puMenu.items = items;
 	}
-	
-	doOnServerTree {
-		if (synth.isPlaying) { { this.play; }.defer(0.05); };
-	}
 
-	init { |argNumChannels, argServer, argBus, argTarget|
-		// Hack to avoid sclang from yelling at us for using the class name itself
-		var mixerChannel = \MixerChannel.asClass;
-
-		if (argTarget.notNil
-			and: mixerChannel.notNil
-			and: { argTarget.isKindOf(mixerChannel) }) {
-			// MixerChannel in use
-			target = argTarget;
-			server = target.server;
-			numChannels = target.inChannels;
-		} {
-			if (argBus.isNil) {
-				// If no bus is provided, default to zero
-				bus = 0;
-				// Server
-				server = argServer ? Server.default;
-				// Number of channels set to 2
-				numChannels = argNumChannels ? 2;
-			} {
-				// If a bus is provided, use it
-				bus = argBus.asBus;
-				// and its server
-				server = argServer ? bus.server;
-				// and its number of channels (unless overridden)
-				numChannels = argNumChannels ? if (argBus.isNumber) { 2 } { bus.numChannels };
-			};
-		};
+	init { |argChannelEQ|
+		channelEQ = argChannelEQ;
 
 		window = Window.new(
-			if (target.isNil) {
-				"ChannelEQ on bus % (% channels)".format(bus, numChannels)
+			if (channelEQ.target.isNil) {
+				"ChannelEQ on bus % (% channels)".format(channelEQ.bus, channelEQ.numChannels)
 			} {
-				"ChannelEQ on '%' (% channels)".format(target.name, numChannels)
+				"ChannelEQ on '%' (% channels)".format(channelEQ.target.name, channelEQ.numChannels)
 			},
-			Rect(299, 130, 305, 220), true
+			Rect(299, 130, 505, 320), true
 		).front; 
 				
 		window.view.decorator = FlowLayout(window.view.bounds, 10@10, 4@0);
@@ -169,8 +201,6 @@ ChannelEQ {
 		// uvw.relativeOrigin = false;
 		
 		uvw.focusColor = Color.clear;
-		
-		frdb = [[100,0,1], [250,0,1], [1000,0,1], [3500,0,1], [6000,0,1]];
 		
 		frpresets = [// x_ = cannot delete or modify 
 			'x_flat', [[100, 0, 1], [250, 0, 1], [1000, 0, 1], [3500, 0, 1], 
@@ -206,22 +236,22 @@ ChannelEQ {
 			
 			StaticText(view, 35@14).font_(font).align_(\right).string_("freq:");
 			vw_array = vw_array.add(
-				RoundNumberBox(view, 40@14).font_(font).value_(frdb[i][0])
+				RoundNumberBox(view, 40@14).font_(font).value_(channelEQ.frdb[i][0])
 					.clipLo_(20).clipHi_(22000)
 					.action_({ |vw|
-						frdb[i][0] = vw.value;
-						this.sendCurrent;
+						channelEQ.frdb[i][0] = vw.value;
+						channelEQ.sendCurrent;
 						uvw.refresh;
 						this.puMenuCheck;
 						}) );
 			
 			StaticText(view, 25@14).font_(font).align_(\right).string_("db:");
 			vw_array = vw_array.add(
-				RoundNumberBox(view, 40@14).font_(font).value_(frdb[i][1])
+				RoundNumberBox(view, 40@14).font_(font).value_(channelEQ.frdb[i][1])
 					.clipLo_(-36).clipHi_(36)
 					.action_({ |vw|
-						frdb[i][1] = vw.value;
-						this.sendCurrent;
+						channelEQ.frdb[i][1] = vw.value;
+						channelEQ.sendCurrent;
 						uvw.refresh;
 						this.puMenuCheck;
 						}) );
@@ -229,11 +259,11 @@ ChannelEQ {
 			StaticText(view, 25@14).font_(font).align_(\right)
 				.string_((0: "rs:", 4:"rs:")[i] ? "rq" );
 			vw_array = vw_array.add(
-				RoundNumberBox(view, 40@14).font_(font).value_(frdb[i][2])
+				RoundNumberBox(view, 40@14).font_(font).value_(channelEQ.frdb[i][2])
 					.step_(0.1).clipLo_(if ([0,4].includes(i)) { 0.6 } {0.01}).clipHi_(10)
 					.action_({ |vw|
-						frdb[i][2] = vw.value;
-						this.sendCurrent;
+						channelEQ.frdb[i][2] = vw.value;
+						channelEQ.sendCurrent;
 						uvw.refresh;
 						this.puMenuCheck;
 						}) 
@@ -250,8 +280,8 @@ ChannelEQ {
 					['power', Color.red(0.8), Color.white(0.75).alpha_(0.25)]])
 				.value_(1)
 				.action_({ |bt| switch(bt.value,
-					1, { this.play },
-					0, { this.free });
+					1, { channelEQ.play },
+					0, { channelEQ.free });
 					})
 				.resize_(7);
 			
@@ -289,7 +319,7 @@ ChannelEQ {
 		
 		puFileButtons[0].action_({
 			File.use(prefsFile, "w", { |f| 
-				f.write((current: frdb, presets: frpresets).asCompileString);
+				f.write((current: channelEQ.frdb, presets: frpresets).asCompileString);
 			});
 		});
 		
@@ -299,9 +329,9 @@ ChannelEQ {
 				File.use(prefsFile, "r", { |f| 
 					contents = f.readAllString.interpret;
 					//contents.postln;
-					frdb = contents[\current];
+					channelEQ.frdb = contents[\current];
 					frpresets = contents[\presets];
-					this.sendCurrent;
+					channelEQ.sendCurrent;
 					this.puMenuCreateItems;
 					this.puMenuCheck;
 					uvw.refresh;
@@ -313,9 +343,9 @@ ChannelEQ {
 		this.puMenuCreateItems;
 	
 		puMenu.action = { |pu|
-			frdb = frpresets[(pu.value * 2) + 1].deepCopy;
+			channelEQ.frdb = frpresets[(pu.value * 2) + 1].deepCopy;
 			//frdb.postln;
-			this.sendCurrent;
+			channelEQ.sendCurrent;
 			uvw.refresh;
 			this.tvwRefresh;
 			if (frpresets[pu.value * 2].asString[..1] == "x_") {
@@ -353,14 +383,14 @@ ChannelEQ {
 			};
 				
 			addPreset = { |name = "user"|
-				frpresets = frpresets ++ [name.asSymbol, frdb.deepCopy];
+				frpresets = frpresets ++ [name.asSymbol, channelEQ.frdb.deepCopy];
 				this.puMenuCreateItems;
 				this.puMenuCheck;
 			};
 				
 			replacePreset = { |name = "x_default", index = 0|
 				frpresets[index * 2] = name.asSymbol;
-				frpresets[(index * 2)+1] = frdb.deepCopy;
+				frpresets[(index * 2)+1] = channelEQ.frdb.deepCopy;
 				this.puMenuCreateItems;
 				this.puMenuCheck;
 			};
@@ -391,7 +421,7 @@ ChannelEQ {
 			//pt = (x@y) - (bounds.leftTop);
 			pt = (x@y);
 			
-			selected =  frdb.detectIndex({ |array|
+			selected =  channelEQ.frdb.detectIndex({ |array|
 				((array[0].explin(min, max, 0, bounds.width))@(array[1].linlin(range.neg, range, bounds.height, 0, \none)))
 					.dist(pt) <= 5;
 			}) ? -1;
@@ -404,6 +434,7 @@ ChannelEQ {
 			var bounds;
 			var pt;
 			var min = 20, max = 22050, range = 24;
+			var frdb = channelEQ.frdb;
 			
 			bounds = vw.bounds.moveTo(0,0);
 			//pt = (x@y) - (bounds.leftTop);
@@ -453,7 +484,7 @@ ChannelEQ {
 					];	
 				tvwViews[selected][0].value = frdb[selected][0];
 				tvwViews[selected][1].value = frdb[selected][1];		};
-			this.sendCurrent;
+			channelEQ.sendCurrent;
 			vw.refresh;
 			this.puMenuCheck;
 				};
@@ -468,6 +499,7 @@ ChannelEQ {
 			var dimvlines = [25,50,75, 250,500,750, 2500,5000,7500];
 			var hlines = [-18,-12,-6,6,12,18];
 			var pt, strOffset = 11;
+			var frdb = channelEQ.frdb;
 			
 			if (GUI.id === 'swing') { strOffset = 14 };
 			
@@ -607,19 +639,8 @@ ChannelEQ {
 		 
 		//uvw.refreshInRect(uvw.bounds.insetBy(-2,-2));
 			
-		window.onClose_ { if (synth.isPlaying != false) { this.free; }; };
-			
-		synthdef = SynthDef("param_beq", { |out = 0, gate = 1, fadeTime = 0.05, doneAction = 2|
-			var frdb, input, env;
-			env = EnvGen.kr(Env.asr(fadeTime, 1, fadeTime), gate, doneAction: doneAction);
-			input = In.ar(out, numChannels);
-			input = this.ar(input);
-			XOut.ar(out, env, input);
-		}).store;
-		
-		this.play;
+		window.onClose_ { if (channelEQ.synth.isPlaying != false) { channelEQ.free; }; };
 		
 	}
-
 
 }
