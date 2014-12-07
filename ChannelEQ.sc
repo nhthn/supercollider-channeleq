@@ -69,6 +69,10 @@ ChannelEQ {
 		gui = ChannelEQGUI(this);
 	}
 
+	unlinkGUI {
+		gui = nil;
+	}
+
 	play {
 		server.waitForBoot {
 			if (target.notNil) {
@@ -228,45 +232,45 @@ ChannelEQGUI {
 	}
 
 	addPreset {
-			var testPreset, addPreset, replacePreset;
-			
-			testPreset = { |name = "user"|
-				var index, xnames, clpresets;
-				name = name.asSymbol;
-				index = frpresets.clump(2)
-					.detectIndex({ |item| item[0] == name.asSymbol });
-				xnames = frpresets.clump(2)
-					.select({ |item| item[0].asString[..1] == "x_" })
-					.collect({ |item| item[0].asString[2..].asSymbol });
-				if (index.isNil) {
-					if (xnames.includes(name).not) {
-						addPreset.value(name);
-					} { 
-						SCAlert("EQ preset '%' cannot be overwritten.\nPlease choose a different name"
-								.format(name), ["ok"]);
-					};
-				} {
-					SCAlert("EQ preset '%' already exists.\nDo you want to overwrite it?"
-							.format(name), ["cancel","ok"], 
-							[{}, { replacePreset.value(name, index) }]); 
+		var testPreset, addPreset, replacePreset;
+		
+		testPreset = { |name = "user"|
+			var index, xnames, clpresets;
+			name = name.asSymbol;
+			index = frpresets.clump(2)
+				.detectIndex({ |item| item[0] == name.asSymbol });
+			xnames = frpresets.clump(2)
+				.select({ |item| item[0].asString[..1] == "x_" })
+				.collect({ |item| item[0].asString[2..].asSymbol });
+			if (index.isNil) {
+				if (xnames.includes(name).not) {
+					addPreset.value(name);
+				} { 
+					SCAlert("EQ preset '%' cannot be overwritten.\nPlease choose a different name"
+							.format(name), ["ok"]);
 				};
+			} {
+				SCAlert("EQ preset '%' already exists.\nDo you want to overwrite it?"
+						.format(name), ["cancel","ok"], 
+						[{}, { replacePreset.value(name, index) }]); 
 			};
-				
-			addPreset = { |name = "user"|
-				frpresets = frpresets ++ [name.asSymbol, channelEQ.frdb.deepCopy];
-				this.puMenuCreateItems;
-				this.puMenuCheck;
-			};
-				
-			replacePreset = { |name = "x_default", index = 0|
-				frpresets[index * 2] = name.asSymbol;
-				frpresets[(index * 2)+1] = channelEQ.frdb.deepCopy;
-				this.puMenuCreateItems;
-				this.puMenuCheck;
-			};
+		};
 			
-			SCRequestString( "user", "Enter a short name for the new preset",
-				{ |str| testPreset.value(str); });
+		addPreset = { |name = "user"|
+			frpresets = frpresets ++ [name.asSymbol, channelEQ.frdb.deepCopy];
+			this.puMenuCreateItems;
+			this.puMenuCheck;
+		};
+			
+		replacePreset = { |name = "x_default", index = 0|
+			frpresets[index * 2] = name.asSymbol;
+			frpresets[(index * 2)+1] = channelEQ.frdb.deepCopy;
+			this.puMenuCreateItems;
+			this.puMenuCheck;
+		};
+		
+		SCRequestString( "user", "Enter a short name for the new preset",
+			{ |str| testPreset.value(str); });
 	}
 
 	deletePreset {
@@ -643,22 +647,19 @@ ChannelEQGUI {
 		];
 		
 		puFileButtons[0].action_ { this.save; };
-		
 		puFileButtons[1].action_ { this.revert; };
 
 		this.puMenuCreateItems;
 	
 		puMenu.action_ { this.onSelect; };
 			
-		puButtons[0].action = { this.addPreset; };
-		
-		puButtons[1].action = { this.deletePreset; };
+		puButtons[0].action_ { this.addPreset; };
+		puButtons[1].action_ { this.deletePreset; };
 		
 		this.puMenuCheck;
 		
-		uvw.mouseDownAction = { |vw, x, y, mod| this.mouseDownAction(vw, x, y, mod); };
-			
-		uvw.mouseMoveAction = { |vw, x, y, mod| this.mouseMoveAction(vw, x, y, mod); };
+		uvw.mouseDownAction_ { |vw, x, y, mod| this.mouseDownAction(vw, x, y, mod); };
+		uvw.mouseMoveAction_ { |vw, x, y, mod| this.mouseMoveAction(vw, x, y, mod); };
 
 		uvw.drawFunc = { |vw| this.drawFunc(vw); };
 
@@ -670,6 +671,8 @@ ChannelEQGUI {
 			
 		window.onClose_ {
 			if (stopOnClose) { channelEQ.stop; };
+			channelEQ.unlinkGUI;
+			channelEQ = nil;
 		};
 		
 	}
