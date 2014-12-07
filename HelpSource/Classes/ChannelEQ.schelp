@@ -1,31 +1,26 @@
 title:: ChannelEQ
 categories:: Classes
-summary:: an equalizer with a graphical interface
+summary:: a parametric equalizer
 
 description::
 
-ChannelEQ fixes several problems with wslib's MasterEQ. ChannelEQ works in instances instead of a single global object, and allows you to equalize a certain Bus or MixerChannel instead of the entire channel. Also allows you to specify the configuration file.
+ChannelEQ is a refactoring of wslib's MasterEQ with many enhancements:
 
-The arguments have ben selected to make it very simple to use:
-
-code::
-
-ChannelEQ(); // Default: just like MasterEQ
-ChannelEQ(3); // you can vary the number of channels
-
-// dewdrop_lib is not required, but compatible
-m = MixerChannel(\main);
-ChannelEQ(target: m);
-
+list::
+## Allows you to equalize a particular bus instead of always the master output.
+## ChannelEQ works in instances instead of a single global object, so you can run multiple ChannelEQ's at once.
+## Compatible with ddwlib's MixerChannel (although it is not required). 
+## The GUI has been moved to a separate class, so you can run the equalizer without the window.
+## Allows specifying a configuration file.
+## Extensibility: the code is much easier to subclass than before.
+## Many miscellaneous bugfixes and modernizations.
 ::
 
 classmethods::
 
-method:: prefsFile
-
-Location of the preferences file. code:: Platform.userConfigDir +/+ "eq-prefs.dat" :: by default.
-
 method:: new
+
+Initializes the equalizer, routes it to the given bus or channel, starts a GUI window, and immediately plays the equalizer. This does all the work for you, making it the easiest way to use ChannelEQ.
 
 argument:: numChannels
 Number of channels. If not provided, then this will be automatically determined from the bus. Failing that, two channels will be used.
@@ -38,3 +33,52 @@ Bus or bus index to use. If not provided, the bus of index 0 will be used.
 
 argument:: target
 If provided, overrides all other parameters by providing a MixerChannel. The number of channels, server, and bus will be automatically determined from it.
+
+method:: newBare
+
+Initializes the equalizer with the given parameters, but does not route, start the GUI, or play the equalizer.
+
+argument:: frdb
+An array of the following format:
+
+code::
+[
+	[freq, gain, rq], // low shelf
+	[freq, gain, rq], // peak 1
+	[freq, gain, rq], // peak 2
+	[freq, gain, rq], // peak 3
+	[freq, gain, rq]  // hi shelf
+]
+::
+
+
+instancemethods::
+
+method:: route
+Connects this equalizer into the given bus or MixerChannel, with the same behavior as the "new" classmethod (but without starting a GUI or autoplaying).
+
+method:: initGUI
+Starts up a GUI.
+
+method:: play
+Plays the equalizer.
+
+method:: stop
+Stops the equalizer.
+
+examples::
+
+code::
+
+ChannelEQ() // default behavior similar to MasterEQ
+
+m = MixerChannel(\mychannel);
+ChannelEQ(target: m);
+
+// Initialization by hand
+c = ChannelEQ.newBare();
+c.route(target: m);
+c.initGUI; // omit this to run w/o GUI
+c.play;
+
+::
