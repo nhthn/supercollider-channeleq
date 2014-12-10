@@ -217,18 +217,25 @@ ChannelEQGUI {
     }
 
     onSelect {
-        channelEQ.frdb = frpresets[(puMenu.value * 2) + 1].deepCopy;
-        //frdb.postln;
-        channelEQ.sendCurrent;
-        uvw.refresh;
-        this.tvwRefresh;
-        if (frpresets[puMenu.value * 2].asString[..1] == "x_") {
-            puButtons[0].enabled_(false); 
-            puButtons[1].enabled_(false);
-        } {
-            puButtons[0].enabled_(false);
-            puButtons[1].enabled_(true);
-        };
+        var idx = puMenu.value;
+        idx.switch(
+            puMenu.items.size - 1, { },
+            puMenu.items.size - 2, { puMenu.value = puMenu.items.size - 1; },
+            {
+                channelEQ.frdb = frpresets[(puMenu.value * 2) + 1].deepCopy;
+                //frdb.postln;
+                channelEQ.sendCurrent;
+                uvw.refresh;
+                this.tvwRefresh;
+                if (frpresets[puMenu.value * 2].asString[..1] == "x_") {
+                    puButtons[0].enabled_(false); 
+                    puButtons[1].enabled_(false);
+                } {
+                    puButtons[0].enabled_(false);
+                    puButtons[1].enabled_(true);
+                };
+            }
+        );
     }
 
     addPreset {
