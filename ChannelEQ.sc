@@ -371,6 +371,7 @@ ChannelEQGUI {
         var dimvlines = [25,50,75, 250,500,750, 2500,5000,7500];
         var hlines = [-18,-12,-6,6,12,18];
         var pt, strOffset = 11;
+        var sr = channelEQ.server.sampleRate;
         var frdb = channelEQ.frdb;
         
         if (GUI.id === 'swing') { strOffset = 14 };
@@ -383,15 +384,15 @@ ChannelEQGUI {
         freqs = freqs.linexp(0, bounds.width, min, max);
         
         values = [
-            BLowShelf.magResponse(freqs, 44100, frdb[0][0], frdb[0][2], 
+            BLowShelf.magResponse(freqs, sr, frdb[0][0], frdb[0][2], 
                 frdb[0][1]),
-            BPeakEQ.magResponse(freqs, 44100, frdb[1][0], frdb[1][2], 
+            BPeakEQ.magResponse(freqs, sr, frdb[1][0], frdb[1][2], 
                 frdb[1][1]),
-            BPeakEQ.magResponse(freqs, 44100, frdb[2][0], frdb[2][2], 
+            BPeakEQ.magResponse(freqs, sr, frdb[2][0], frdb[2][2], 
                 frdb[2][1]),
-            BPeakEQ.magResponse(freqs, 44100, frdb[3][0], frdb[3][2], 
+            BPeakEQ.magResponse(freqs, sr, frdb[3][0], frdb[3][2], 
                 frdb[3][1]),
-            BHiShelf.magResponse(freqs, 44100, frdb[4][0], frdb[4][2], 
+            BHiShelf.magResponse(freqs, sr, frdb[4][0], frdb[4][2], 
                 frdb[4][1])
         ].ampdb.max(-200).min(200);
         
