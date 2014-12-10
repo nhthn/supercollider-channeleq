@@ -384,16 +384,11 @@ ChannelEQGUI {
         freqs = freqs.linexp(0, bounds.width, min, max);
         
         values = [
-            BLowShelf.magResponse(freqs, sr, frdb[0][0], frdb[0][2], 
-                frdb[0][1]),
-            BPeakEQ.magResponse(freqs, sr, frdb[1][0], frdb[1][2], 
-                frdb[1][1]),
-            BPeakEQ.magResponse(freqs, sr, frdb[2][0], frdb[2][2], 
-                frdb[2][1]),
-            BPeakEQ.magResponse(freqs, sr, frdb[3][0], frdb[3][2], 
-                frdb[3][1]),
-            BHiShelf.magResponse(freqs, sr, frdb[4][0], frdb[4][2], 
-                frdb[4][1])
+            BLowShelf.magResponse(freqs, sr, frdb[0][0], frdb[0][2], frdb[0][1]),
+            BPeakEQ.magResponse(freqs, sr, frdb[1][0], frdb[1][2], frdb[1][1]),
+            BPeakEQ.magResponse(freqs, sr, frdb[2][0], frdb[2][2], frdb[2][1]),
+            BPeakEQ.magResponse(freqs, sr, frdb[3][0], frdb[3][2], frdb[3][1]),
+            BHiShelf.magResponse(freqs, sr, frdb[4][0], frdb[4][2], frdb[4][1])
         ].ampdb.max(-200).min(200);
         
         zeroline = 0.linlin(range.neg,range, bounds.height, 0, \none);
@@ -603,18 +598,6 @@ ChannelEQGUI {
             
         });
             
-        bypassButton = RoundButton.new(window, 17@17)
-                .extrude_(true).border_(1) //.font_(font)
-                .states_([
-                    ['power', Color.gray(0.2), Color.white(0.75).alpha_(0.25)],
-                    ['power', Color.red(0.8), Color.white(0.75).alpha_(0.25)]])
-                .value_(1)
-                .action_({ |bt| switch(bt.value,
-                    1, { channelEQ.play },
-                    0, { channelEQ.stop });
-                    })
-                .resize_(7);
-            
         puMenu = PopUpMenu.new(window, 100@16)
             .font_(font).canFocus_(false)
             .resize_(7);
@@ -665,6 +648,18 @@ ChannelEQGUI {
         uvw.drawFunc = { |vw| this.drawFunc(vw); };
 
         puFileButtons[1].action.value; // revert
+
+        bypassButton = RoundButton.new(window, 17@17)
+                .extrude_(true).border_(1) //.font_(font)
+                .states_([
+                    ['power', Color.gray(0.2), Color.white(0.75).alpha_(0.25)],
+                    ['power', Color.red(0.8), Color.white(0.75).alpha_(0.25)]])
+                .value_(1)
+                .action_({ |bt| switch(bt.value,
+                    1, { channelEQ.play },
+                    0, { channelEQ.stop });
+                    })
+                .resize_(7);
 
         window.refresh;
          
